@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Passenger Feedback</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-bar">
+    <h1>Passenger Feedback</h1>
+  </div>
+
+  <div class="page">
+    <form id="feedbackForm" class="form">
+      <!-- Station Code / Name -->
+      <div class="field">
+        <label for="station">Station Code / Name</label>
+        <input
+          id="station"
+          type="text"
+          value="Detecting station..."
+          readonly
+        />
+      </div>
+
+      <!-- Date -->
+      <div class="field">
+        <label for="date">Date</label>
+        <input id="date" type="date" required />
+      </div>
+
+      <!-- Passenger name -->
+      <div class="field">
+        <label for="name">Passenger Name *</label>
+        <input id="name" type="text" placeholder="Passenger Name" required />
+      </div>
+
+      <!-- Ticket / employee -->
+      <div class="field">
+        <label for="ticket">Ticket/Employee Number *</label>
+        <small>Enter ticket/employee number (max 20 characters)</small>
+        <input
+          id="ticket"
+          type="text"
+          maxlength="20"
+          placeholder="Ticket/Employee Number"
+          required
+        />
+      </div>
+
+      <!-- Mobile -->
+      <div class="field">
+        <label for="mobile">Mobile Number *</label>
+        <input
+          id="mobile"
+          type="tel"
+          required
+          pattern="[0-9]{10}"
+          maxlength="10"
+          placeholder="10 digit mobile number"
+        />
+      </div>
+
+      <!-- Email -->
+      <div class="field">
+        <label for="email">Email ID</label>
+        <div class="row">
+          <input
+            id="email"
+            type="email"
+            class="flex-1"
+            required
+            placeholder="example@gmail.com"
+          />
+        </div>
+      </div>
+
+      <!-- Detailed table rating (DNR only) -->
+      <div class="dnr-rating" id="dnrRatingSection">
+        <p class="section-title">
+          Please tick (✓) in appropriate column
+        </p>
+        <div class="table-wrapper">
+          <table class="feedback-table" id="feedbackTable">
+            <thead>
+              <tr>
+                <th>ITEM</th>
+                <th class="rotated">Excellent</th>
+                <th class="rotated">OK</th>
+                <th class="rotated">Poor</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr data-row="0">
+                <td>General Cleaning of platform</td>
+                <td class="rate-cell" data-value="2"></td>
+                <td class="rate-cell" data-value="1"></td>
+                <td class="rate-cell" data-value="0"></td>
+              </tr>
+              <tr data-row="1">
+                <td>General Cleaning of rail line (track) of Platform</td>
+                <td class="rate-cell" data-value="2"></td>
+                <td class="rate-cell" data-value="1"></td>
+                <td class="rate-cell" data-value="0"></td>
+              </tr>
+              <tr data-row="2">
+                <td>Cleaning of toilets/ Urinals/ Water booth etc.</td>
+                <td class="rate-cell" data-value="2"></td>
+                <td class="rate-cell" data-value="1"></td>
+                <td class="rate-cell" data-value="0"></td>
+              </tr>
+              <tr data-row="3">
+                <td>Cleaning of dustbin and disposal of garbage</td>
+                <td class="rate-cell" data-value="2"></td>
+                <td class="rate-cell" data-value="1"></td>
+                <td class="rate-cell" data-value="0"></td>
+              </tr>
+              <tr data-row="4">
+                <td>General Cleaning of waiting hall</td>
+                <td class="rate-cell" data-value="2"></td>
+                <td class="rate-cell" data-value="1"></td>
+                <td class="rate-cell" data-value="0"></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Simple overall rating (non‑DNR) -->
+      <div class="field" id="simpleRatingSection">
+        <p class="section-title">Overall Rating</p>
+        <div class="overall-rating" id="overallRating">
+          <button type="button" class="rating-chip excellent" data-value="2">
+            Excellent
+          </button>
+          <button type="button" class="rating-chip ok" data-value="1">
+            OK
+          </button>
+          <button type="button" class="rating-chip poor" data-value="0">
+            Poor
+          </button>
+        </div>
+      </div>
+
+      <!-- Submit button (hidden until station ready) -->
+      <button
+        type="submit"
+        class="btn primary full-width"
+        id="submitBtn"
+        style="display:none"
+        disabled
+      >
+        Submit Feedback
+      </button>
+    </form>
+  </div>
+
+  <div id="snackbar"></div>
+
+  <script>
+    // ---------- globals ----------
+    let curatedStations = []; 
+    const rowRatings = {}; 
+    let overallRating = null;
+
+    // ---------- helpers ----------
+    function setTodayDate() {
+      const dateInput = document.getElementById("date");
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, "0");
+      const dd = String(today.getDate()).padStart(2, "0");
+      dateInput.value = yyyy + "-" + mm + "-" + dd;
+    }
+
+    function showSnackBar(message) {
+      const bar = document.getElementById("snackbar");
+      bar.textContent = message;
+      bar.classList.add("show");
+      setTimeout(() => {
+        bar.classList.remove("show");
+      }, 3000);
+    }
+
+    function setSubmitEnabled(enabled) {
+      const btn = document.getElementById("submitBtn");
+      btn.style.display = enabled ? "block" : "none";
+      btn.disabled = !enabled;
+    }
+
+    // ---------- load curated stations (division info) ----------
+    function loadCuratedStations() {
+      return fetch("https://rsmsuatapi.biputri.com/station/curated-stations/")
+        .then((res) => {
+          if (!res.ok) throw new Error("HTTP " + res.status);
+          return res.json();
+        })
+        .then((data) => {
+          const zones = data.station_data || [];
+          curatedStations = zones.flatMap((zone) =>
+            (zone.divisions || []).flatMap((div) =>
+              (div.stations || []).map((st) => ({
+                code: String(st.station_code),
+                name: st.station_name,
+                divisionCode: st.division_code,
+                divisionName: st.division_name,
+              }))
+            )
+          );
+          console.log("curated stations loaded", curatedStations.length);
+
+          // Set default station = Sealdah (SDAH, code 621) from curated list
+          const stationInput = document.getElementById("station");
+          const sealdah = curatedStations.find(
+            (s) =>
+              s.name.toUpperCase() === "SDAH" ||
+              s.code === "621"
+          );
+          if (sealdah) {
+            stationInput.value = sealdah.code + " - " + sealdah.name;
+            stationInput.dataset.code = sealdah.code;
+            stationInput.dataset.division = sealdah.divisionCode || "";
+            toggleRatingSections(sealdah.divisionCode || "");
+            setSubmitEnabled(true); // default station is valid
+          } else {
+            stationInput.value = "Detecting station...";
+            stationInput.dataset.code = "";
+            stationInput.dataset.division = "";
+            setSubmitEnabled(false);
+          }
+        })
+        .catch((err) => {
+          console.error("curated-stations error", err);
+          showSnackBar("Failed to load station master data");
+        });
+    }
+
+    function findStationInCurated(code) {
+      if (!code || curatedStations.length === 0) return null;
+      return curatedStations.find((s) => s.code === String(code)) || null;
+    }
+
+    // ---------- auto-detect nearest station (overrides default if found) ----------
+    function detectStationFromLocation() {
+    const stationInput = document.getElementById("station");
+
+    if (!navigator.geolocation) {
+      console.warn("Geolocation not supported");
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+
+        const url =
+          "https://railopsapi.suvidhaen.com/microservice/station/nearest/?" +
+          new URLSearchParams({
+            latitude: lat,
+            longitude: lng,
+          }).toString();
+
+        fetch(url)
+          .then((res) => {
+            if (!res.ok) throw new Error("HTTP " + res.status);
+            return res.json();
+          })
+          .then((data) => {
+            console.log("nearest station (raw)", data);
+
+            const nearestCode = String(
+              data.station_code || data.code || data.stationId || ""
+            );
+
+         
+          let chosen = nearestCode ? findStationInCurated(nearestCode) : null;
+
+          // if not found, fall back to Sealdah from curated list
+          if (!chosen) {
+            chosen = curatedStations.find(
+              (s) =>
+                s.name.toUpperCase() === "SDAH" ||
+                s.code === "621"
+            );
+          }
+
+          if (!chosen) {
+            stationInput.value = "Station not found";
+            stationInput.dataset.code = "";
+            stationInput.dataset.division = "";
+            toggleRatingSections(null);
+            setSubmitEnabled(false);
+            return;
+          }
+
+          stationInput.value = chosen.code + " - " + chosen.name;
+          stationInput.dataset.code = chosen.code;
+          stationInput.dataset.division = chosen.divisionCode || "";
+          toggleRatingSections(chosen.divisionCode || "");
+          setSubmitEnabled(true);
+        })
+        .catch((err) => {
+          console.error("nearest station error", err);
+          // on error, fall back to Sealdah
+          const sealdah = curatedStations.find(
+            (s) =>
+              s.name.toUpperCase() === "SDAH" ||
+              s.code === "621"
+          );
+          if (sealdah) {
+            stationInput.value = sealdah.code + " - " + sealdah.name;
+            stationInput.dataset.code = sealdah.code;
+            stationInput.dataset.division = sealdah.divisionCode || "";
+            toggleRatingSections(sealdah.divisionCode || "");
+            setSubmitEnabled(true);
+          } else {
+            stationInput.value = "Station not detected";
+            stationInput.dataset.code = "";
+            stationInput.dataset.division = "";
+            toggleRatingSections(null);
+            setSubmitEnabled(false);
+          }
+        });
+    },
+    (err) => {
+      console.error("geolocation error", err);
+      // if user denies location, use Sealdah by default
+      const sealdah = curatedStations.find(
+        (s) =>
+          s.name.toUpperCase() === "SDAH" ||
+          s.code === "621"
+      );
+      if (sealdah) {
+        stationInput.value = sealdah.code + " - " + sealdah.name;
+        stationInput.dataset.code = sealdah.code;
+        stationInput.dataset.division = sealdah.divisionCode || "";
+        toggleRatingSections(sealdah.divisionCode || "");
+        setSubmitEnabled(true);
+      } else {
+        stationInput.value = "Station not detected";
+        stationInput.dataset.code = "";
+        stationInput.dataset.division = "";
+        toggleRatingSections(null);
+        setSubmitEnabled(false);
+      }
+    },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+  );
+}
+
+    // ---------- show/hide rating sections based on division ----------
+    function toggleRatingSections(divisionCode) {
+      const dnrSection = document.getElementById("dnrRatingSection");
+      const simpleSection = document.getElementById("simpleRatingSection");
+
+      if (!divisionCode) {
+        dnrSection.style.display = "none";
+        simpleSection.style.display = "none";
+        return;
+      }
+
+      if (divisionCode === "DNR") {
+        dnrSection.style.display = "block";
+        simpleSection.style.display = "none";
+      } else {
+        dnrSection.style.display = "none";
+        simpleSection.style.display = "block";
+      }
+    }
+
+    // ---------- rating table logic (DNR) ----------
+    const feedbackTable = document.getElementById("feedbackTable");
+    if (feedbackTable) {
+      feedbackTable.addEventListener("click", (e) => {
+        const cell = e.target.closest(".rate-cell");
+        if (!cell) return;
+
+        const row = cell.parentElement;
+        const rowIndex = row.getAttribute("data-row");
+        const value = cell.getAttribute("data-value");
+
+        row.querySelectorAll(".rate-cell").forEach((c) => {
+          c.classList.remove(
+            "selected-excellent",
+            "selected-ok",
+            "selected-poor"
+          );
+          c.textContent = "";
+        });
+
+        if (value === "2") cell.classList.add("selected-excellent");
+        if (value === "1") cell.classList.add("selected-ok");
+        if (value === "0") cell.classList.add("selected-poor");
+        cell.textContent = "✓";
+
+        rowRatings[rowIndex] = Number(value);
+      });
+    }
+
+    // ---------- overall rating chips (non‑DNR) ----------
+    const overallRatingDiv = document.getElementById("overallRating");
+    if (overallRatingDiv) {
+      overallRatingDiv.addEventListener("click", (e) => {
+        const chip = e.target.closest(".rating-chip");
+        if (!chip) return;
+        const value = chip.getAttribute("data-value");
+        overallRating = Number(value);
+
+        overallRatingDiv
+          .querySelectorAll(".rating-chip")
+          .forEach((c) => c.classList.remove("selected"));
+
+        chip.classList.add("selected");
+      });
+    }
+
+    // ---------- POST feedback on submit ----------
+    document
+      .getElementById("feedbackForm")
+      .addEventListener("submit", function (e) {
+        e.preventDefault();
+
+        if (!this.checkValidity()) {
+          this.reportValidity();
+          return;
+        }
+
+        const stationInput = document.getElementById("station");
+        const stationCode = (stationInput.dataset.code || "").trim();
+        const divisionCode = stationInput.dataset.division || "";
+
+        if (!stationCode) {
+          showSnackBar("Station not selected.");
+          return;
+        }
+
+        const email = document.getElementById("email").value.trim();
+        if (!email.toLowerCase().endsWith("@gmail.com")) {
+          showSnackBar("Email must be a gmail.com address");
+          return;
+        }
+
+        if (divisionCode !== "DNR" && overallRating === null) {
+          showSnackBar("Please select overall rating");
+          return;
+        }
+
+        const payload = {
+          station_code: stationCode,
+          date: document.getElementById("date").value,
+          passenger_name: document.getElementById("name").value,
+          ticket_no: document.getElementById("ticket").value,
+          mobile: document.getElementById("mobile").value,
+          email: email,
+          overall_rating: overallRating,
+          item_ratings: rowRatings,
+        };
+
+        fetch("https://rsmsuatapi.biputri.com/api/feedback/public/feedback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
+          .then((res) => {
+            if (!res.ok) throw new Error("Submit failed: " + res.status);
+            return res.json().catch(() => ({}));
+          })
+          .then((data) => {
+            console.log("submit response", data);
+            showSnackBar("Feedback submitted successfully");
+          })
+          .catch((err) => {
+            console.error(err);
+            showSnackBar("Failed to submit feedback");
+          });
+      });
+
+    // ---------- init ----------
+    window.addEventListener("load", () => {
+      setTodayDate();
+      document.getElementById("dnrRatingSection").style.display = "none";
+      document.getElementById("simpleRatingSection").style.display = "none";
+      setSubmitEnabled(false);
+      // load curated list (for division + default Sealdah), then ask for location
+      loadCuratedStations().then(detectStationFromLocation);
+    });
+  </script>
+</body>
+</html>

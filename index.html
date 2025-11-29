@@ -19,7 +19,6 @@
       justify-content: center;
       align-items: center;
     }
-
     .popup-content {
       background: #fff;
       padding: 24px 32px;
@@ -28,13 +27,11 @@
       text-align: center;
       box-shadow: 0 2px 10px rgba(0,0,0,0.2);
     }
-
     .popup-content p {
       margin-bottom: 16px;
       font-size: 16px;
       font-weight: 500;
     }
-
     .popup-content .btn {
       width: 100px;
     }
@@ -146,7 +143,9 @@
       </div>
 
       <!-- Submit button (hidden until station ready) -->
-      <button type="submit" class="btn primary full-width" id="submitBtn" style="display:none" disabled>Submit Feedback</button>
+      <button type="submit" class="btn primary full-width" id="submitBtn" style="display:none" disabled>
+        Submit Feedback
+      </button>
     </form>
   </div>
 
@@ -162,7 +161,7 @@
     let curatedStations = [];
     const rowRatings = {};
     let overallRating = null;
-    let resetFormOnClose = false; // New flag to handle form reset on popup close
+    let resetFormOnClose = false;
 
     function setTodayDate() {
       const dateInput = document.getElementById("date");
@@ -238,6 +237,7 @@
       }
     }
 
+    // Load curated stations using BASE_URL from config.js
     function loadCuratedStations() {
       return fetch(BASE_URL + "station/curated-stations/")
         .then(res => res.ok ? res.json() : Promise.reject("Failed"))
@@ -246,52 +246,61 @@
           curatedStations = zones.flatMap(zone =>
             (zone.divisions || []).flatMap(div =>
               (div.stations || []).map(st => ({
-                code: String(st.station_code),
-                name: st.station_name,
+                code: String(st.station_code),   // e.g. "PNBE"
+                name: st.station_name,          // "Patna Junction"
                 divisionCode: st.division_code,
                 divisionName: st.division_name
               }))
             )
           );
-
-          const stationInput = document.getElementById("station");
-          const sealdah = curatedStations.find(s =>
-            s.name.toUpperCase() === "SDAH" || s.code === "621"
-          );
-          if (sealdah) {
-            stationInput.value = sealdah.code + " - " + sealdah.name;
-            stationInput.dataset.code = sealdah.code;
-            stationInput.dataset.division = sealdah.divisionCode || "";
-            toggleRatingSections(sealdah.divisionCode || "");
-            setSubmitEnabled(true);
-          }
         })
         .catch(err => console.error("curated-stations error", err));
     }
-function findStationInCurated(code) {
-  if (!code || curatedStations.length === 0) return null;
 
-  const c = String(code).toUpperCase().trim();
+    // Match either by code or name
+    function findStationInCurated(codeOrName) {
+      if (!codeOrName || curatedStations.length === 0) return null;
+      const c = String(codeOrName).toUpperCase().trim();
 
-  // 1) Match by station_code
-  let found = curatedStations.find(
-    s => String(s.code).toUpperCase() === c
-  );
-  if (found) return found;
+      // 1) Match by station_code like "PNBE"
+      let found = curatedStations.find(
+        s => String(s.code).toUpperCase() === c
+      );
+      if (found) return found;
 
-  // 2) Match by station_name
-  found = curatedStations.find(
-    s => s.name.toUpperCase() === c
-  );
-  if (found) return found;
-
-  return null;
-}
-
+      // 2) Match by station_name if backend sends that instead
+      found = curatedStations.find(
+        s => String(s.name).toUpperCase() === c
+      );
+      return found || null; 
+    }
 
     function detectStationFromLocation() {
       const stationInput = document.getElementById("station");
-      if (!navigator.geolocation) return;
+
+      const setToSealdah = () => {
+        const sealdah = curatedStations.find(
+          (s) => s.name.toUpperCase() === "SDAH" || s.code === "621"
+        );
+        if (sealdah) {
+          stationInput.value = sealdah.code + " - " + sealdah.name;
+          stationInput.dataset.code = sealdah.code;
+          stationInput.dataset.division = sealdah.divisionCode || "";
+          toggleRatingSections(sealdah.divisionCode || "");
+          setSubmitEnabled(true);
+        } else {
+          stationInput.value = "Station not found";
+          stationInput.dataset.code = "";
+          stationInput.dataset.division = "";
+          toggleRatingSections(null);
+          setSubmitEnabled(false);
+        }
+      };
+
+      if (!navigator.geolocation || curatedStations.length === 0) {
+        setToSealdah();
+        return;
+      }
 
       navigator.geolocation.getCurrentPosition(
         pos => {
@@ -304,17 +313,45 @@ function findStationInCurated(code) {
           fetch(url)
             .then(res => res.json())
             .then(data => {
-              let nearestCode = String(data.station_code || data.code || data.stationId || "");
-              let chosen = nearestCode ? findStationInCurated(nearestCode) : null;
-              if (!chosen) {
-                chosen = curatedStations.find(s => s.name.toUpperCase() === "SDAH" || s.code === "621");
+              // Many possibilities from nearest API:
+              // station_name: "PNBE"
+              // station_code: 100 (numeric ID)
+              // Use station_name as primary code to match "PNBE"
+              const nearestNameCode = data.station_name
+                ? String(data.station_name).toUpperCase().trim()
+                : "";
+
+              // Optional distance limit
+              const distanceMeters =
+                typeof data.distance === "number" ? data.distance : null;
+              const MAX_DIST_METERS = 25000;
+
+              let chosen = null;
+
+              // First try by station_name (actual code like "PNBE")
+              if (nearestNameCode) {
+                chosen = findStationInCurated(nearestNameCode);
               }
+
+              // If still not found, optionally fall back to numeric ID or other fields
               if (!chosen) {
-                stationInput.value = "Station not found";
-                stationInput.dataset.code = "";
-                stationInput.dataset.division = "";
-                toggleRatingSections(null);
-                setSubmitEnabled(false);
+                const fallbackId = data.station_code || data.code || data.stationId;
+                if (fallbackId != null) {
+                  chosen = findStationInCurated(fallbackId);
+                }
+              }
+
+              // Apply distance rule if distance is given
+              if (
+                chosen &&
+                distanceMeters !== null &&
+                distanceMeters > MAX_DIST_METERS
+              ) {
+                chosen = null;
+              }
+
+              if (!chosen) {
+                setToSealdah();
                 return;
               }
 
@@ -323,9 +360,16 @@ function findStationInCurated(code) {
               stationInput.dataset.division = chosen.divisionCode || "";
               toggleRatingSections(chosen.divisionCode || "");
               setSubmitEnabled(true);
+            })
+            .catch(err => {
+              console.warn("nearest-station error", err);
+              setToSealdah();
             });
-        }, 
-        err => console.warn("Geolocation error", err), 
+        },
+        err => {
+          console.warn("Geolocation error", err);
+          setToSealdah();
+        },
         { enableHighAccuracy: true }
       );
     }
@@ -363,7 +407,8 @@ function findStationInCurated(code) {
         const value = chip.getAttribute("data-value");
         overallRating = Number(value);
 
-        overallRatingDiv.querySelectorAll(".rating-chip").forEach(c => c.classList.remove("selected"));
+        overallRatingDiv.querySelectorAll(".rating-chip")
+          .forEach(c => c.classList.remove("selected"));
         chip.classList.add("selected");
       });
     }
@@ -416,17 +461,17 @@ function findStationInCurated(code) {
         item_ratings: rowRatings
       };
 
-   fetch(BASE_URL + "feedback/public/feedback", {
+      fetch(BASE_URL + "feedback/public/feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       })
-      .then(res => {
-        if (!res.ok) throw new Error("Submit failed: " + res.status);
-        return res.json().catch(() => ({}));
-      })
-      .then(data => showPopup("Thank you for submitting your feedback!", true))
-      .catch(err => showPopup("Failed to submit feedback. Please try again."));
+        .then(res => {
+          if (!res.ok) throw new Error("Submit failed: " + res.status);
+          return res.json().catch(() => ({}));
+        })
+        .then(data => showPopup("Thank you for submitting your feedback!", true))
+        .catch(err => showPopup("Failed to submit feedback. Please try again."));
     });
 
     window.addEventListener("load", () => {

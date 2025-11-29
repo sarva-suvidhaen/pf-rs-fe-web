@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <title>Passenger Feedback</title>
   <link rel="stylesheet" href="styles.css">
+  <script src="config.js"></script>
   <style>
     /* Popup Modal Styles */
     .popup-modal {
@@ -238,7 +239,7 @@
     }
 
     function loadCuratedStations() {
-      return fetch("https://rsmsuatapi.biputri.com/station/curated-stations/")
+      return fetch(BASE_URL + "station/curated-stations/")
         .then(res => res.ok ? res.json() : Promise.reject("Failed"))
         .then(data => {
           const zones = data.station_data || [];
@@ -267,11 +268,26 @@
         })
         .catch(err => console.error("curated-stations error", err));
     }
+function findStationInCurated(code) {
+  if (!code || curatedStations.length === 0) return null;
 
-    function findStationInCurated(code) {
-      if (!code || curatedStations.length === 0) return null;
-      return curatedStations.find(s => s.code === String(code)) || null;
-    }
+  const c = String(code).toUpperCase().trim();
+
+  // 1) Match by station_code
+  let found = curatedStations.find(
+    s => String(s.code).toUpperCase() === c
+  );
+  if (found) return found;
+
+  // 2) Match by station_name
+  found = curatedStations.find(
+    s => s.name.toUpperCase() === c
+  );
+  if (found) return found;
+
+  return null;
+}
+
 
     function detectStationFromLocation() {
       const stationInput = document.getElementById("station");
@@ -400,7 +416,7 @@
         item_ratings: rowRatings
       };
 
-      fetch("https://rsmsuatapi.biputri.com/api/feedback/public/feedback", {
+   fetch(BASE_URL + "feedback/public/feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)

@@ -277,8 +277,8 @@
     // display "BTA - Bihta" but store numeric id for backend
     function setStationFieldFromStation(st) {
       const stationInput = document.getElementById("station");
-      stationInput.value = `${st.code} - ${st.fullName}`;  // e.g. BTA - Bihta
-      stationInput.dataset.code = st.id;                   // numeric 131 for API
+      stationInput.value = `${st.code} - ${st.fullName}`;  // e.g. BTA - Bihta....
+      stationInput.dataset.code = st.id;                   // numeric 131 for API...
       stationInput.dataset.division = st.divisionCode || "";
       toggleRatingSections(st.divisionCode || "");
     }

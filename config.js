@@ -1,14 +1,14 @@
 // config.js
 
 // Change ENV value only (UAT / PROD)
-const ENV = "PROD";
+const ENV = "UAT";
 
 const CONFIG = {
   UAT: {
-    BASE_URL: "https://rsmsuatapi.biputri.com/"
+    BASE_URL: "https://rsmsuatapi.suvidhaen.com/"
   },
   PROD: {
-    BASE_URL: "https://rsmsapi.biputri.com/"
+    BASE_URL: "https://rsmsapi.suvidhaen.com/"
   }
 };
 

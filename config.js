@@ -1,7 +1,7 @@
 // config.js
 
 // Change ENV value only (UAT / PROD)
-const ENV = "UAT";
+const ENV = "PROD";
 
 const CONFIG = {
   UAT: {
